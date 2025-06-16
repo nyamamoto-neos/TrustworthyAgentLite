@@ -13,7 +13,7 @@ class WikiSearchAgent(TrustworthyAgent):
     Agent to search Wikipedia content and answer questions.
     """
 
-    def __init__(self, llm: BaseLLM, agent_arch: str = "react", PROMPT_DEBUG_FLAG=False, hallu_metric: str = "tlm"):
+    def __init__(self, llm: BaseLLM, agent_arch: str = "react", PROMPT_DEBUG_FLAG=False, hallu_metric: str = "tlm", score_last_only: bool = False):
         name = "wiki_search_agent"
         role = "Answer questions by searching Wikipedia content."
         constraint = "Generation should be simple and clear."
@@ -36,7 +36,8 @@ class WikiSearchAgent(TrustworthyAgent):
             instruction=instruction, # common instruction will use default in agentlite.agent_prompts.prompt_utils.DEFAULT_PROMPT["agent_instruction"]
             logger=TrustworthyAgentLogger(PROMPT_DEBUG_FLAG=PROMPT_DEBUG_FLAG, hallu_metric=hallu_metric),
             agent_arch=agent_arch,
-            hallu_metric=hallu_metric
+            hallu_metric=hallu_metric,
+            score_last_only=score_last_only
         )
         self.__build_examples__()
 

@@ -103,8 +103,8 @@ class TrustworthyAgentLogger(AgentLogger):
         )
         self.hallu_metric = hallu_metric
 
-    def __color_trust_score__(self, score: float):
-        # Color coding based on trust score ranges
+    def __color_hallu_score__(self, score: float):
+        # Color coding based on hallucination score ranges
         if score >= 0.8:
             color = bcolors.OKGREEN  # High trust - green
         elif score >= 0.5:
@@ -113,8 +113,8 @@ class TrustworthyAgentLogger(AgentLogger):
             color = bcolors.FAIL     # Low trust - red
         return f"{color}{score:.2f}{bcolors.ENDC}"
 
-    def log_action_trust(self, action: AgentAct, trust_score: float, agent_name: str, step_idx: int, hallu_metric: str = "tlm"):
-        """Log an action's trustworthiness score."""        
+    def log_action_hallu(self, action: AgentAct, hallu_score: float, agent_name: str, step_idx: int, hallu_metric: str = "tlm"):
+        """Log an action's hallucination score."""        
         # Determine the score type name based on the metric
         if hallu_metric == "tlm":
             score_type = "TLM trustworthiness score"
@@ -123,6 +123,6 @@ class TrustworthyAgentLogger(AgentLogger):
         else:
             score_type = f"{hallu_metric} score"
         
-        # Log the trust score on its own line
-        trust_str = f"""{score_type}: {self.__color_trust_score__(trust_score)}"""
-        self.__save_log__(trust_str)
+        # Log the hallucination score on its own line
+        hallu_str = f"""{score_type}: {self.__color_hallu_score__(hallu_score)}"""
+        self.__save_log__(hallu_str)

@@ -22,8 +22,8 @@ class TrustworthyAgent(BaseAgent):
     It tracks all LLM interactions (prompts and responses) and saves them to CSV.
     
     Additional parameters:
-        trust_score_file: str, optional
-            Path to save trustworthiness scores.
+        hallu_score_file: str, optional
+            Path to save hallucination scores.
         score_last_only: bool, optional
             Whether to only score the last Finish act.
         hallu_metric: str, optional
@@ -36,7 +36,7 @@ class TrustworthyAgent(BaseAgent):
         role: str,
         llm: Any,
         actions: List[Any] = [],
-        trust_score_file: str = None,
+        hallu_score_file: str = None,
         score_last_only: bool = False,
         hallu_metric: str = "tlm",
         **kwargs
@@ -69,15 +69,15 @@ class TrustworthyAgent(BaseAgent):
         # ---------------------------------------------------
 
         # ---------------- Save to CSV (Optional) ----------------
-        if trust_score_file is None:
-            trust_score_file = f"data/{agent_arch}_{llm_model_name}_{hallu_metric}.csv"
-        self.trust_score_file = trust_score_file
+        if hallu_score_file is None:
+            hallu_score_file = f"data/{agent_arch}_{llm_model_name}_{hallu_metric}.csv"
+        self.hallu_score_file = hallu_score_file
         
         # Determine the score column name based on the metric
         score_column_name = f"{self.hallu_metric}_score"
         
         try:
-            with open(self.trust_score_file, 'x', newline='') as f:
+            with open(self.hallu_score_file, 'x', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([
                     'task_id',
@@ -121,14 +121,16 @@ class TrustworthyAgent(BaseAgent):
         # ---------------------------------------------------
 
         # ---------------- Minimal TLM Setup ----------------
-        trust_score = None
+        hallu_score = None
         if not self.score_last_only or agent_act.name == FinishAct.action_name:
             if self.hallu_metric == "tlm":
-                trust_score = self.tlm.get_trustworthiness_score(action_prompt, raw_action)["trustworthiness_score"]
+                hallu_score = self.tlm.get_trustworthiness_score(action_prompt, raw_action)["trustworthiness_score"]
         # ---------------------------------------------------
         # ---------------- Benchmarking (Optional) ----------------
             elif self.hallu_metric == "self_eval":
-                trust_score = get_self_eval_score(self.llm_layer, action_prompt, raw_action)
+                if not self.score_last_only:
+                    raise ValueError("Self Eval was designed to only evaluate the final Finish response. Please set score_last_only=True when using hallu_metric='self_eval'.")
+                hallu_score = get_self_eval_score(self.llm_layer, action_prompt, raw_action)
             else:
                 raise ValueError(f"Unsupported hallucination metric: {self.hallu_metric}")
         # ---------------------------------------------------
@@ -141,35 +143,35 @@ class TrustworthyAgent(BaseAgent):
             f1, _, _ = f1_score(response, task.ground_truth)
         
         # ---------------- Logging & Saving (Optional) ----------------
-        if trust_score is not None:
-            self.logger.log_action_trust(
+        if hallu_score is not None:
+            self.logger.log_action_hallu(
                 action=agent_act,
-                trust_score=trust_score,
+                hallu_score=hallu_score,
                 agent_name=self.name,
                 step_idx=len(action_chain),
                 hallu_metric=self.hallu_metric
             )
 
-            self.__record_interaction__(
-                task_id=task.task_id,
-                step=len(action_chain),
-                question=task.instruction,
-                answer=task.ground_truth,
-                prompt=action_prompt,
-                raw_action=raw_action,
-                finish_response=response,
-                trust_score=trust_score,
-                f1=f1,
-                action_name=agent_act.name,
-                action_params=agent_act.params,
-                hallu_metric=self.hallu_metric
-            )
+        self.__record_interaction__(
+            task_id=task.task_id,
+            step=len(action_chain),
+            question=task.instruction,
+            answer=task.ground_truth,
+            prompt=action_prompt,
+            raw_action=raw_action,
+            finish_response=response,
+            hallu_score=hallu_score,
+            f1=f1,
+            action_name=agent_act.name,
+            action_params=agent_act.params,
+            hallu_metric=self.hallu_metric
+        )
         # ---------------------------------------------------
         return agent_act
 
     # ---------------- Save to CSV (Optional) ----------------
     def __record_interaction__(self, **kwargs):
-        """Record an LLM interaction to the trust score CSV file.
+        """Record an LLM interaction to the hallucination score CSV file.
         
         Args:
             **kwargs: Interaction details to record
@@ -179,7 +181,7 @@ class TrustworthyAgent(BaseAgent):
             hallu_metric = kwargs.get('hallu_metric', 'tlm')
             score_column_name = f"{hallu_metric}_score"
             
-            with open(self.trust_score_file, 'a', newline='') as f:
+            with open(self.hallu_score_file, 'a', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([
                     kwargs.get('task_id', ''),
@@ -189,10 +191,10 @@ class TrustworthyAgent(BaseAgent):
                     kwargs.get('prompt', ''),
                     kwargs.get('raw_action', ''),
                     kwargs.get('finish_response', None),
-                    kwargs.get(score_column_name, None),
+                    kwargs.get('hallu_score', None),
                     kwargs.get('f1', None),
                     kwargs.get('action_name', ''),
                     str(kwargs.get('action_params', {}))
                 ])
         except Exception as e:
-            self.logger.error(f"Failed to record trust score: {str(e)}")
+            self.logger.error(f"Failed to record hallucination score: {str(e)}")

@@ -53,7 +53,7 @@ def load_hotpot_qa_data(level):
     # joblib requires python 3.10 or higher
     return joblib.load(file_path)
 
-def run_hotpot_qa_agent_one_complex_level(level="easy", llm_name="gpt-3.5-turbo-16k-0613", agent_arch="react", PROMPT_DEBUG_FLAG=False, num_examples=None, hallu_metric="tlm"):
+def run_hotpot_qa_agent_one_complex_level(level="easy", llm_name="gpt-3.5-turbo-16k-0613", agent_arch="react", PROMPT_DEBUG_FLAG=False, num_examples=None, hallu_metric="tlm", score_last_only=False):
     """
     Test the WikiSearchAgent with a single specified dataset level and LLM.
     Args:
@@ -63,6 +63,7 @@ def run_hotpot_qa_agent_one_complex_level(level="easy", llm_name="gpt-3.5-turbo-
         PROMPT_DEBUG_FLAG: Whether to enable prompt debugging
         num_examples: Number of examples to evaluate (default: None)
         hallu_metric: Hallucination metric to use ("tlm", "self_eval")
+        score_last_only: Whether to only score the last Finish act
     Returns:
         tuple: (average_f1_score, accuracy) for the specified level
     """
@@ -89,7 +90,7 @@ def run_hotpot_qa_agent_one_complex_level(level="easy", llm_name="gpt-3.5-turbo-
             }
         )
     llm = get_llm_backend(llm_config)
-    agent = WikiSearchAgent(llm=llm, agent_arch=agent_arch, PROMPT_DEBUG_FLAG=PROMPT_DEBUG_FLAG, hallu_metric=hallu_metric)
+    agent = WikiSearchAgent(llm=llm, agent_arch=agent_arch, PROMPT_DEBUG_FLAG=PROMPT_DEBUG_FLAG, hallu_metric=hallu_metric, score_last_only=score_last_only)
     
     # Initialize results file for this level
     results_file = f"data/{agent_arch}_{llm_name}_results_{level}.csv"
@@ -125,7 +126,7 @@ def run_hotpot_qa_agent_one_complex_level(level="easy", llm_name="gpt-3.5-turbo-
             
     return avg_f1, acc
 
-def run_hotpot_qa_agent(level=None, llm_name="gpt-3.5-turbo-16k-0613", agent_arch="react", PROMPT_DEBUG_FLAG=False, num_examples=None, hallu_metric="tlm"):
+def run_hotpot_qa_agent(level=None, llm_name="gpt-3.5-turbo-16k-0613", agent_arch="react", PROMPT_DEBUG_FLAG=False, num_examples=None, hallu_metric="tlm", score_last_only=False):
     """
     Test the WikiSearchAgent on HotPotQA benchmark.
     Args:
@@ -135,6 +136,7 @@ def run_hotpot_qa_agent(level=None, llm_name="gpt-3.5-turbo-16k-0613", agent_arc
         PROMPT_DEBUG_FLAG: Whether to enable prompt debugging
         num_examples: Number of examples to evaluate per level (default: None)
         hallu_metric: Hallucination metric to use ("tlm", "self_eval")
+        score_last_only: Whether to only score the last Finish act
     Returns:
         dict: Results for each level containing (f1_score, accuracy) tuples
     """
@@ -147,7 +149,8 @@ def run_hotpot_qa_agent(level=None, llm_name="gpt-3.5-turbo-16k-0613", agent_arc
             agent_arch=agent_arch,
             PROMPT_DEBUG_FLAG=PROMPT_DEBUG_FLAG,
             num_examples=num_examples,
-            hallu_metric=hallu_metric
+            hallu_metric=hallu_metric,
+            score_last_only=score_last_only
         )
         return {level: (f1, acc)}
     else:
@@ -160,7 +163,8 @@ def run_hotpot_qa_agent(level=None, llm_name="gpt-3.5-turbo-16k-0613", agent_arc
                 agent_arch=agent_arch,
                 PROMPT_DEBUG_FLAG=PROMPT_DEBUG_FLAG,
                 num_examples=num_examples,
-                hallu_metric=hallu_metric
+                hallu_metric=hallu_metric,
+                score_last_only=score_last_only
             )
             results[lvl] = (f1, acc)
         return results
@@ -208,6 +212,11 @@ if __name__ == "__main__":
         default="tlm",
         help="Hallucination metric to use for trustworthiness scoring",
     )
+    parser.add_argument(
+        "--score_last_only",
+        action='store_true',
+        help="Whether to only score the last Finish act",
+    )
     args = parser.parse_args()
 
     results = run_hotpot_qa_agent(
@@ -216,7 +225,8 @@ if __name__ == "__main__":
         agent_arch=args.agent_arch, 
         PROMPT_DEBUG_FLAG=args.debug,
         num_examples=args.num_examples,
-        hallu_metric=args.hallu_metric
+        hallu_metric=args.hallu_metric,
+        score_last_only=args.score_last_only
     )
     
     print(f"{'+'*100}")
