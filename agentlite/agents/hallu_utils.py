@@ -26,10 +26,7 @@ def construct_confidence_prompt(full_prompt_and_actions, finish_action):
         str: Formatted confidence evaluation prompt
     """
     template = f"""Interaction:
-        {full_prompt_and_actions}
-
-        Finish action:
-        {finish_action}
+        {full_prompt_and_actions}{finish_action}
 
         Instruction:
         Evaluate whether the Finish action's "response" correctly and completely answers the task described in the Interaction.
