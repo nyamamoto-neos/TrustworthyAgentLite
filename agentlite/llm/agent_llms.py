@@ -1,5 +1,3 @@
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
 from openai import OpenAI
 
 from agentlite.llm.LLMConfig import LLMConfig
@@ -14,9 +12,17 @@ OPENAI_CHAT_MODELS = [
     "gpt-4-32k",
     "gpt-4-32k-0613",
     "gpt-4-1106-preview",
-    "gpt-4.1-mini"
+    "gpt-4.1-mini",
+    "gpt-4o",
+    "gpt-4o-mini",
 ]
-OPENAI_LLM_MODELS = ["text-davinci-003", "text-ada-001"]
+
+# DeepSeek models
+DEEPSEEK_MODELS = [
+    "deepseek-chat",
+    "deepseek-coder",
+    "deepseek-reasoner"
+]
 
 
 class BaseLLM:
@@ -37,9 +43,16 @@ class BaseLLM:
 
 
 class OpenAIChatLLM(BaseLLM):
+    """
+    Direct OpenAI Chat API implementation (no LangChain dependency).
+    Supports all OpenAI chat models including GPT-3.5, GPT-4, etc.
+    """
     def __init__(self, llm_config: LLMConfig):
         super().__init__(llm_config=llm_config)
-        self.client = OpenAI(api_key=llm_config.api_key)
+        self.client = OpenAI(
+            api_key=llm_config.api_key,
+            base_url=llm_config.base_url
+        )
 
     def run(self, prompt: str):
         response = self.client.chat.completions.create(
@@ -48,78 +61,58 @@ class OpenAIChatLLM(BaseLLM):
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt},
             ],
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
         )
         return response.choices[0].message.content
 
 
-class LangchainLLM(BaseLLM):
-    def __init__(self, llm_config: LLMConfig):
-        from langchain_openai import OpenAI
-
-        super().__init__(llm_config)
-        llm = OpenAI(
-            model_name=self.llm_name,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            base_url=llm_config.base_url,
-            api_key=llm_config.api_key,
-        )
-        human_template = "{prompt}"
-        prompt = PromptTemplate(template=human_template, input_variables=["prompt"])
-        self.llm_chain = LLMChain(prompt=prompt, llm=llm)
-
-    def run(self, prompt: str):
-        return self.llm_chain.invoke({"prompt": prompt})["text"]
-
-
-class LangchainChatModel(BaseLLM):
-    def __init__(self, llm_config: LLMConfig):
-        from langchain_openai import ChatOpenAI
-
-        super().__init__(llm_config)
-        llm = ChatOpenAI(
-            model_name=self.llm_name,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            base_url=llm_config.base_url,
-            api_key=llm_config.api_key,
-        )
-        human_template = "{prompt}"
-        prompt = PromptTemplate(template=human_template, input_variables=["prompt"])
-        self.llm_chain = LLMChain(prompt=prompt, llm=llm)
-
-    def run(self, prompt: str):
-        return self.llm_chain.invoke({"prompt": prompt})["text"]
-
-
-# class LangchainOllamaLLM(BaseLLM):
-#     def __init__(self, llm_config: LLMConfig):
-#         from langchain_community.llms import Ollama
-
-#         super().__init__(llm_config)
-#         llm = Ollama(
-#             model=self.llm_name,
-#             temperature=self.temperature,
-#             num_predict=self.max_tokens,
-#             base_url=llm_config.base_url
-#             # api_key=llm_config.api_key,
-#         )
-#         human_template = "{prompt}"
-#         prompt = PromptTemplate(template=human_template, input_variables=["prompt"])
-#         self.llm_chain = LLMChain(prompt=prompt, llm=llm)
-
-#     def run(self, prompt: str):
-#         return self.llm_chain.run(prompt)
-
 def get_llm_backend(llm_config: LLMConfig):
+    """
+    Factory function to get the appropriate LLM backend based on provider and model name.
+
+    Supports:
+    - OpenAI models (direct OpenAI SDK, no LangChain)
+    - OpenRouter (any model via OpenRouter's unified API)
+    - DeepSeek (DeepSeek's native models)
+    - OpenAI-compatible endpoints (custom/self-hosted)
+
+    Provider selection (in order of precedence):
+    1. Explicit provider in config: llm_config.provider
+    2. Model name pattern matching (e.g., deepseek-chat -> deepseek)
+    3. Default to OpenAI chat backend
+
+    Args:
+        llm_config: LLMConfig object with model name, provider, and credentials
+
+    Returns:
+        BaseLLM: Configured LLM backend instance
+    """
+    from agentlite.llm.openai_compatible_llm import (
+        OpenRouterLLM,
+        DeepSeekLLM,
+        OpenAICompatibleLLM
+    )
+
     llm_name = llm_config.llm_name
     llm_provider = llm_config.provider
-    if llm_name in OPENAI_CHAT_MODELS:
-        return LangchainChatModel(llm_config)
-    elif llm_name in OPENAI_LLM_MODELS:
-        return LangchainLLM(llm_config)
-    else:
-        return LangchainLLM(llm_config)
-    # TODO: add more llm providers and inference APIs but for now we are using langchainLLM as the default
-    # Using other LLM providers will require additional setup and configuration
-    # We suggest subclass BaseLLM and implement the run method for the specific provider in your own best practices
+
+    # Explicit provider selection
+    if llm_provider == "openrouter":
+        return OpenRouterLLM(llm_config)
+    elif llm_provider == "deepseek":
+        return DeepSeekLLM(llm_config)
+    elif llm_provider == "openai_compatible":
+        return OpenAICompatibleLLM(llm_config)
+
+    # Model name pattern matching
+    if llm_name in DEEPSEEK_MODELS:
+        return DeepSeekLLM(llm_config)
+    elif "/" in llm_name and llm_name not in OPENAI_CHAT_MODELS:
+        # OpenRouter model naming convention: "provider/model"
+        # E.g., "anthropic/claude-3.5-sonnet", "meta-llama/llama-3.1-70b"
+        return OpenRouterLLM(llm_config)
+
+    # Default: use OpenAI chat backend for all other models
+    # This handles all OpenAI models and any unrecognized model names
+    return OpenAIChatLLM(llm_config)

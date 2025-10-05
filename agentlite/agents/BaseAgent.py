@@ -29,7 +29,7 @@ class BaseAgent(ABCAgent):
     :type constraint: str, optional
     :param instruction: the agent instruction, defaults to "You are an intelligent agent.\
         You should follow your {PROMPT_TOKENS["role"]['begin']}, {PROMPT_TOKENS["action"]['begin']} to take actions.\
-            Your generation should follow the example format. Finish the task as best as you can.". 
+            Your generation should follow the example format. Finish the task as best as you can.".
             PROMPT_TOKENS is defined in agentlite/agent_prompts/prompt_utils.py
     :type instruction: str, optional
     :param reasoning_type: the reasoning type of this agent, defaults to "react". See BaseAgent.__add_inner_actions__ for more details.
@@ -215,6 +215,32 @@ class BaseAgent(ABCAgent):
         """
 
         action_name, args, PARSE_FLAG = parse_action(raw_action)
+
+        # If parsing failed but the raw_action still looks like ActionName[...],
+        # try a tolerant secondary parse: split at the first '[' and attempt
+        # to recover the arguments (useful when LLM emits unquoted identifiers).
+        if not PARSE_FLAG and isinstance(raw_action, str) and "[" in raw_action and "]" in raw_action:
+            try:
+                import json, re
+                left = raw_action.split("[", 1)[0].strip()
+                right = raw_action.rsplit("]", 1)[0]
+                args_str = right.split("[", 1)[1]
+                # Attempt direct JSON parse first
+                try:
+                    parsed_args = json.loads(args_str)
+                except json.JSONDecodeError:
+                    # Fallback: quote barewords (same heuristic as agent_utils)
+                    tolerant = re.sub(r'(?P<prefix>[:\[,\s])(?P<word>[A-Za-z_][A-Za-z0-9_]*)' \
+                                       r'(?P<suffix>\s*(?=[,\]\}]))',
+                                       r"\g<prefix>\"\g<word>\"\g<suffix>",
+                                       args_str)
+                    parsed_args = json.loads(tolerant)
+                action_name = left
+                args = parsed_args
+            except Exception:
+                # leave action_name and args as returned by parse_action
+                pass
+
         agent_act = AgentAct(name=action_name, params=args)
         return agent_act
 
@@ -230,7 +256,7 @@ class BaseAgent(ABCAgent):
         :rtype: str
         """
         act_found_flag = False
-        
+
         # if match one in self.actions
         for action in self.actions:
             if act_match(agent_act.name, action):
@@ -263,7 +289,7 @@ class BaseAgent(ABCAgent):
         :type example_type: str, optional
         """
         self.prompt_gen.add_example(task, action_chain, example_type=example_type)
-    
+
     def __check_action__(self, action_name:str):
         """check if the action is in the action space
 

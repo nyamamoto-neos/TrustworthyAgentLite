@@ -124,16 +124,32 @@ class ManagerAgent(BaseAgent):
         """
 
         action_name, args, PARSE_FLAG = parse_action(raw_action)
+
+        # Initialize agent_act to None to track if we found a match
+        agent_act = None
+
         # if action_name match a labor_agent
         if self.team:
             for agent in self.team:
                 if self.agent_match(action_name, agent):
                     agent_act = AgentAct(name=action_name, params=args)
+                    break
 
-        # if action_name is action
-        for action in self.actions:
-            if act_match(action_name, action):
-                agent_act = AgentAct(name=action_name, params=args)
+        # if action_name is action (and we haven't found a matching agent)
+        if agent_act is None:
+            for action in self.actions:
+                if act_match(action_name, action):
+                    agent_act = AgentAct(name=action_name, params=args)
+                    break
+
+        # If we still don't have a matching action, use raw_action as fallback
+        if agent_act is None:
+            agent_act = AgentAct(name=raw_action, params={})
+            try:
+                self.logger.error(f"Unrecognized action from LLM: {raw_action}. Using raw_action as fallback.")
+            except Exception:
+                pass
+
         return agent_act
 
     def forward(self, task: TaskPackage, agent_act: AgentAct) -> str:
@@ -151,9 +167,25 @@ class ManagerAgent(BaseAgent):
         for agent in self.team:
             if self.agent_match(agent_act.name, agent):
                 act_found_flag = True
-                new_task_package = self.create_TP(
-                    agent_act.params[AGENT_CALL_ARG_KEY], agent.id
-                )
+                # Try to get the task instruction from params
+                # Check for AGENT_CALL_ARG_KEY ("Task") first, then try other common keys
+                task_instruction = None
+                if AGENT_CALL_ARG_KEY in agent_act.params:
+                    task_instruction = agent_act.params[AGENT_CALL_ARG_KEY]
+                elif 'task' in agent_act.params:
+                    task_instruction = agent_act.params['task']
+                elif 'instruction' in agent_act.params:
+                    task_instruction = agent_act.params['instruction']
+                elif 'query' in agent_act.params:
+                    task_instruction = agent_act.params['query']
+                elif len(agent_act.params) == 1:
+                    # If there's only one param, use its value
+                    task_instruction = list(agent_act.params.values())[0]
+                else:
+                    # Fallback: convert all params to a string instruction
+                    task_instruction = f"Params: {agent_act.params}"
+
+                new_task_package = self.create_TP(task_instruction, agent.id)
                 observation = agent(new_task_package)
                 return observation
         # if action is inner action

@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 import csv
-from utils import f1_score
+from agentlite.utils import f1_score
 from datetime import datetime
 from dotenv import load_dotenv
 from .BaseAgent import BaseAgent
@@ -16,17 +16,17 @@ load_dotenv()
 
 class TrustworthyAgent(BaseAgent):
     """A TrustworthyAgent that tracks and scores LLM interactions for trustworthiness.
-    
+
     This agent extends BaseAgent to add trustworthiness scoring functionality.
     It tracks all LLM interactions (prompts and responses) and saves them to CSV.
-    
+
     Additional parameters:
         trust_score_file: str, optional
             Path to save trustworthiness scores.
         score_last_only: bool, optional
             Whether to only score the last Finish act.
     """
-    
+
     def __init__(
         self,
         name: str,
@@ -35,6 +35,7 @@ class TrustworthyAgent(BaseAgent):
         actions: List[Any] = [],
         trust_score_file: str = None,
         score_last_only: bool = False,
+        skip_trust_actions: List[str] = None,
         **kwargs
     ):
         # ---------------- Logger Setup (Optional) ----------------
@@ -55,9 +56,14 @@ class TrustworthyAgent(BaseAgent):
         super().__init__(name=name, role=role, llm=llm, actions=actions, **kwargs)
         self.max_exec_steps = 10 # Set max steps for agent following BOLAA
         # ---------------------------------------------------
-        
+
         self.score_last_only = score_last_only         # Optional: Whether to score only final Finish act
-        
+
+        # Actions for which we should NOT call TLM (e.g., local plotting actions)
+        if skip_trust_actions is None:
+            skip_trust_actions = ["DrawFigure"]
+        self.skip_trust_actions = set(skip_trust_actions)
+
         # ---------------- Minimal TLM Setup ----------------
         self.tlm = TLM()
         # ---------------------------------------------------
@@ -88,11 +94,11 @@ class TrustworthyAgent(BaseAgent):
 
     def __next_act__(self, task: TaskPackage, action_chain: ActObsChainType) -> AgentAct:
         """Override __next_act__ to track and score LLM interactions.
-        
+
         Args:
             task: The current task being executed
             action_chain: History of actions and observations
-            
+
         Returns:
             AgentAct: The next action to take
         """
@@ -112,8 +118,29 @@ class TrustworthyAgent(BaseAgent):
 
         # ---------------- Minimal TLM Setup ----------------
         trust_score = None
-        if not self.score_last_only or agent_act.name == FinishAct.action_name:
-            trust_score = self.tlm.get_trustworthiness_score(action_prompt, raw_action)["trustworthiness_score"]
+        # Skip TLM scoring for specified local actions (e.g., DrawFigure).
+        # Be tolerant: skip when the action name contains the skip token (covers cases
+        # where parsing failed and agent_act.name equals the full raw_action string),
+        # and when the raw_action contains the action call pattern.
+        should_skip = False
+        for a in self.skip_trust_actions:
+            try:
+                if a in (agent_act.name or ""):
+                    should_skip = True
+                    break
+                if isinstance(raw_action, str) and (f"{a}[" in raw_action or raw_action.strip().startswith(a)):
+                    should_skip = True
+                    break
+            except Exception:
+                # be defensive; if any unexpected types occur, avoid scoring
+                should_skip = True
+                break
+
+        if should_skip:
+            trust_score = None
+        else:
+            if not self.score_last_only or agent_act.name == FinishAct.action_name:
+                trust_score = self.tlm.get_trustworthiness_score(action_prompt, raw_action)["trustworthiness_score"]
         # ---------------------------------------------------
 
         # ---------------- Get F1 score & Response (Optional) ----------------
@@ -122,7 +149,7 @@ class TrustworthyAgent(BaseAgent):
         if agent_act.name == FinishAct.action_name:
             response = FinishAct(**agent_act.params)
             f1, _, _ = f1_score(response, task.ground_truth)
-        
+
         # ---------------- Logging & Saving (Optional) ----------------
         if trust_score is not None:
             self.logger.log_action_trust(
@@ -151,7 +178,7 @@ class TrustworthyAgent(BaseAgent):
     # ---------------- Save to CSV (Optional) ----------------
     def __record_interaction__(self, **kwargs):
         """Record an LLM interaction to the trust score CSV file.
-        
+
         Args:
             **kwargs: Interaction details to record
         """

@@ -12,7 +12,7 @@ import numpy as np
 import requests
 from tqdm import tqdm
 from SearchActions import WikipediaSearch
-from hotpotagents import WikiSearchAgent 
+from hotpotagents import WikiSearchAgent
 
 
 from agentlite.actions import BaseAction, FinishAct, ThinkAct
@@ -67,35 +67,61 @@ def run_hotpot_qa_agent_one_complex_level(level="easy", llm_name="gpt-3.5-turbo-
     """
     # Load environment variables
     load_dotenv()
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        raise ValueError("OPENAI_API_KEY not found in environment variables. Please set it in your .env file.")
+    # Read keys from environment without mutating them yet. We prefer a real OPENAI_API_KEY
+    # but will accept OPENROUTER_API_KEY as a fallback.
+    openai_env = os.getenv("OPENAI_API_KEY")
+    openrouter_env = os.getenv("OPENROUTER_API_KEY")
+    if not openai_env and not openrouter_env:
+        raise ValueError("OPENAI_API_KEY (or OPENROUTER_API_KEY) not found in environment variables. Please set it in your .env file.")
 
     # build the search agent
-    llm_config = LLMConfig({
-        "llm_name": llm_name, 
+    # If only OPENROUTER_API_KEY is provided (and not OPENAI_API_KEY), configure
+    # the LLM to use the OpenRouter provider so requests go to the OpenRouter API.
+    provider = None
+    base_url = None
+    if openrouter_env and not openai_env:
+        provider = "openrouter"
+        base_url = os.getenv("OPENROUTER_API_BASE")
+
+    # Choose the API key to pass into the LLM config: prefer OpenAI key, otherwise OpenRouter key
+    api_key_to_use = openai_env or openrouter_env
+
+    # If using OpenRouter and the provided model name doesn't include a provider,
+    # prefix it with 'openai/' so OpenRouter recognizes it as an OpenAI model.
+    effective_llm_name = llm_name
+    if provider == "openrouter" and "/" not in llm_name:
+        effective_llm_name = f"openai/{llm_name}"
+
+    llm_config_dict = {
+        "llm_name": effective_llm_name,
         "temperature": 0.0,
-        "api_key": openai_api_key
-    })
-    # running xlam 
+        "api_key": api_key_to_use,
+    }
+    if provider:
+        llm_config_dict["provider"] = provider
+    if base_url:
+        llm_config_dict["base_url"] = base_url
+
+    llm_config = LLMConfig(llm_config_dict)
+    # running xlam
     if llm_name in ["xlam", "xlam_v2"]:
         llm_config = LLMConfig(
             {
-                "llm_name": llm_name, 
-                "temperature": 0.0, 
+                "llm_name": llm_name,
+                "temperature": 0.0,
                 "base_url": "http://localhost:8000/v1",
                 "api_key": "EMPTY"
             }
         )
     llm = get_llm_backend(llm_config)
     agent = WikiSearchAgent(llm=llm, agent_arch=agent_arch, PROMPT_DEBUG_FLAG=PROMPT_DEBUG_FLAG)
-    
+
     # Initialize results file for this level
     results_file = f"data/{agent_arch}_{llm_name}_results_{level}.csv"
     with open(results_file, "w", newline='') as f:
         writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
         writer.writerow(["Question", "Ground Truth", "Prediction", "F1 Score", "Running Accuracy", "Execution Chain"])
-    
+
     hotpot_data = load_hotpot_qa_data(level)
     hotpot_data = hotpot_data.reset_index(drop=True)
     if num_examples is not None:
@@ -115,13 +141,13 @@ def run_hotpot_qa_agent_one_complex_level(level="easy", llm_name="gpt-3.5-turbo-
 
         avg_f1 = np.mean(f1_list)
         acc = correct / len(task_instructions)
-        
+
         # Create CSV row with proper escaping and quoting
         row = [test_task, answer, response, f"{f1:.4f}", f"{acc:.4f}", str(execution)]
         with open(results_file, "a", newline='') as f:
             writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
             writer.writerow(row)
-            
+
     return avg_f1, acc
 
 def run_hotpot_qa_agent(level=None, llm_name="gpt-3.5-turbo-16k-0613", agent_arch="react", PROMPT_DEBUG_FLAG=False, num_examples=None):
@@ -173,11 +199,13 @@ if __name__ == "__main__":
         default=None,
         help="Difficulty level of the dataset. If not provided, runs all levels.",
     )
+    # CLI accepts --llm to override the LLM from environment (.env). If --llm is
+    # provided it will take precedence over the LLM variable in .env.
     parser.add_argument(
         "--llm",
         type=str,
-        default="gpt-3.5-turbo-16k-0613",
-        help="Name of the language model",
+        default=None,
+        help="Name of the language model; if provided it overrides LLM in .env",
     )
     parser.add_argument(
         "--agent_arch",
@@ -199,15 +227,19 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    # Load .env and choose LLM: CLI --llm overrides .env LLM, falling back to a sensible default
+    load_dotenv()
+    chosen_llm = args.llm or os.getenv("LLM") or "gpt-3.5-turbo-16k-0613"
+
     results = run_hotpot_qa_agent(
-        level=args.level, 
-        llm_name=args.llm, 
-        agent_arch=args.agent_arch, 
+        level=args.level,
+        llm_name=chosen_llm,
+        agent_arch=args.agent_arch,
         PROMPT_DEBUG_FLAG=args.debug,
-        num_examples=args.num_examples
+        num_examples=args.num_examples,
     )
-    
+
     print(f"{'+'*100}")
     for level, (f1, acc) in results.items():
-        print(f"LLM model: {args.llm}, Dataset: {level}, Result: F1-Score = {f1:.4f}, Accuracy = {acc:.4f}")
+        print(f"LLM model: {chosen_llm}, Dataset: {level}, Result: F1-Score = {f1:.4f}, Accuracy = {acc:.4f}")
     print(f"{'+'*100}")

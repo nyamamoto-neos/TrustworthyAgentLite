@@ -18,7 +18,44 @@ This repository is a fork of [AgentLite](https://github.com/SalesforceAIResearch
   * Generate a new task ID for each interaction.
   * Add error handling for Wiki searches in `hotpotqa/SearchActions.py`.
   * Re-save `hard.joblib` HotPotQA data file using pandas >= 2.0 to fix `ModuleNotFoundError: No module named 'pandas.core.indexes.numeric'`.
-  * Replace run with invoke for `LLMChain` to comply with LangChain ≥ 0.1.0.
+  * **Removed LangChain dependency** - migrated to direct OpenAI SDK for lighter, faster implementation.
+
+---
+
+### 🔄 Alternative LLM Providers
+
+**NEW!** AgentLite now supports multiple LLM providers beyond OpenAI:
+- **OpenRouter**: Unified API for 100+ models (Claude, Llama, Gemini, etc.)
+- **DeepSeek**: High-performance models for chat and coding
+- **OpenAI-compatible**: Any custom endpoint with OpenAI-compatible API
+
+📖 **See full documentation:** [docs/ALTERNATIVE_LLM_PROVIDERS.md](./docs/ALTERNATIVE_LLM_PROVIDERS.md)
+
+**Quick example:**
+```python
+from agentlite.llm.LLMConfig import LLMConfig
+from agentlite.llm.agent_llms import get_llm_backend
+
+# Use OpenRouter with Claude
+config = LLMConfig({
+    "provider": "openrouter",
+    "llm_name": "anthropic/claude-3.5-sonnet",
+})
+llm = get_llm_backend(config)
+
+# Or use DeepSeek
+config = LLMConfig({
+    "provider": "deepseek",
+    "llm_name": "deepseek-chat",
+})
+llm = get_llm_backend(config)
+```
+
+**Set API keys:**
+```bash
+export OPENROUTER_API_KEY="sk-or-v1-..."  # Get from https://openrouter.ai
+export DEEPSEEK_API_KEY="sk-..."          # Get from https://platform.deepseek.com
+```
 
 ---
 
@@ -29,6 +66,10 @@ This repository is a fork of [AgentLite](https://github.com/SalesforceAIResearch
    ```bash
    CLEANLAB_TLM_API_KEY=<your_cleanlab_api_key>  # Get your free API key from: https://tlm.cleanlab.ai/
    OPENAI_API_KEY=<your_openai_api_key>          # Sign up for OpenAI at https://platform.openai.com/signup
+
+   # Optional: Use alternative providers
+   OPENROUTER_API_KEY=<your_openrouter_key>      # Get from https://openrouter.ai
+   DEEPSEEK_API_KEY=<your_deepseek_key>          # Get from https://platform.deepseek.com
    ```
 2. Install dependencies:
 
@@ -40,9 +81,18 @@ This repository is a fork of [AgentLite](https://github.com/SalesforceAIResearch
 
    ```bash
    cd benchmark/hotpotqa
+
+   # With OpenAI (default)
    python evaluate_hotpot_qa.py --llm gpt-4.1-mini --agent_arch act --num_examples 5
+
+   # Or with alternative providers (see docs/ALTERNATIVE_LLM_PROVIDERS.md for setup)
    ```
 4. Results (including trust scores) will be saved in `data/`.
+
+**Test alternative providers:**
+```bash
+python examples/test_alternative_providers.py
+```
 
 ---
 
@@ -104,7 +154,7 @@ For full usage and extended documentation, refer to the original [AgentLite](htt
 AgentLite is a research-oriented library designed for building and advancing LLM-based task-oriented agent systems. It simplifies the implementation of new agent/multi-agent architectures, enabling easy orchestration of multiple agents through a manager agent. Whether you're building individual agents or complex multi-agent systems, AgentLite provides a straightforward and lightweight foundation for your research and development. Check more details in [our paper](https://arxiv.org/abs/2402.15538).
 
 ## 🎉 News
-- **[04.2024]** [UI Supporting](./app/Homepage.py) is released for AgentLite! 
+- **[04.2024]** [UI Supporting](./app/Homepage.py) is released for AgentLite!
 - **[03.2024]** [xLAM model](https://huggingface.co/collections/Salesforce/xlam-models-65f00e2a0a63bbcd1c2dade4) and [xLAM code](https://github.com/SalesforceAIResearch/xLAM) is released! Try it with [AgentLite benchmark](./benchmark/), which is comparable to GPT-4!
 - **[03.2024]** We developed all the agent architectures in [BOLAA](https://arxiv.org/pdf/2308.05960.pdf) with AgentLite. Check our [new benchmark](./benchmark/)
 - **[02.2024]** Initial Release of AgentLite library and [paper](https://arxiv.org/abs/2402.15538)!
@@ -164,7 +214,7 @@ from langchain_community.tools import WikipediaQueryRun
 
 class WikipediaSearch(BaseAction):
     def __init__(self) -> None:
-        action_name = "Wikipedia_Search" 
+        action_name = "Wikipedia_Search"
         action_desc = "Using this API to search Wiki content." # LLM uses action_name and action_desc to understand this action
         params_doc = {"query": "the search string. be simple."} # LLM uses this params_doc to understand the parameters in self.__call__() function
         self.search = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
@@ -190,10 +240,10 @@ search_agent_info = {
     "name": "search_agent",
     "role": "you can search wikipedia to get the information."
 }
-search_agent = BaseAgent(name=search_agent_info["name"], 
-                         role=search_agent_info["role"], 
-                         llm=llm, 
-                         actions=[WikipediaSearch()], 
+search_agent = BaseAgent(name=search_agent_info["name"],
+                         role=search_agent_info["role"],
+                         llm=llm,
+                         actions=[WikipediaSearch()],
                          logger=agent_logger
                          )
 ```
@@ -242,7 +292,7 @@ manager_agent_info = {
     "role": "you are controlling wiki_search_agent and duck_search_agent to complete the search task. You should first use wiki_search_agent to complete the search task. If didn't answer the task, please try to ask duck_search_agent. You should integrate the answer from both agent to finalize the task."
 }
 # simply initializing the manager with info and the TeamAgents.
-search_manager = ManagerAgent(llm, manager_agent_info["name"], 
+search_manager = ManagerAgent(llm, manager_agent_info["name"],
                               manager_agent_info["role"],
                               TeamAgents=[wiki_search_agent, duck_search_agent])
 ```
@@ -270,7 +320,7 @@ Agent search_manager takes 0-step Action:
         name: wiki_search_agent
         params: {'Task': 'What is salesforce famous for?'}
 }
-``` 
+```
 
 ## 📘 [Tutorials](./tutorials/)
 
@@ -279,7 +329,7 @@ Agent search_manager takes 0-step Action:
 - [Two Agent in Chess Game](./tutorials/chess_game.ipynb)
 - [Math Problem Solving](./tutorials/math_problem_solving.ipynb)
 - [Interactive Image Understanding](./tutorials/interactive_image_understanding.ipynb)
-- [Multi_LLM_QA](./tutorials/multi_LLM_QA.ipynb) 
+- [Multi_LLM_QA](./tutorials/multi_LLM_QA.ipynb)
 - [Search_and_Paint](./tutorials/search_and_paint.ipynb)
 - [Philosophers_chatting](./tutorials/philosophers_chatting.ipynb)
 
@@ -295,7 +345,7 @@ For detailed examples and tutorials on how to utilize AgentLite for your researc
 If you find our paper or code useful, please cite
 ```
 @misc{liu2024agentlite,
-      title={AgentLite: A Lightweight Library for Building and Advancing Task-Oriented LLM Agent System}, 
+      title={AgentLite: A Lightweight Library for Building and Advancing Task-Oriented LLM Agent System},
       author={Zhiwei Liu and Weiran Yao and Jianguo Zhang and Liangwei Yang and Zuxin Liu and Juntao Tan and Prafulla K. Choubey and Tian Lan and Jason Wu and Huan Wang and Shelby Heinecke and Caiming Xiong and Silvio Savarese},
       year={2024},
       eprint={2402.15538},
@@ -305,7 +355,8 @@ If you find our paper or code useful, please cite
 ```
 
 ## Acknowledgement
-- We use some great tools in [Langchain](https://github.com/langchain-ai/langchain) to build the examples and the library LLM call
+- Original [AgentLite](https://github.com/SalesforceAIResearch/AgentLite) framework by Salesforce AI Research
+- This fork adds TrustworthyAgent with Cleanlab TLM integration and alternative LLM provider support
 
 ## Contact
 Please reach out to us if you have any questions or suggestions. You can submit an issue or pull request, or send an email to zhiweiliu@salesforce.com
