@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 from typing import Tuple
 
@@ -66,7 +67,18 @@ def _render_final_chart(california_pop: int, mexico_pop: int, california_trust: 
     print(f"\n✅ {result}")
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the trustworthy multi-agent population tutorial")
+    parser.add_argument(
+        "--manager-plot",
+        action="store_true",
+        help="Instruct the manager to drive the plot agent and skip the scripted fallback chart.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = _parse_args()
     prepare_environment()
     _print_environment_summary()
     data_dir = ensure_data_directory()
@@ -88,13 +100,23 @@ def main() -> None:
 
     print(f"🔧 Agent type configured as: {agent_type}")
 
+    instruction = "Search Wikipedia for the population of California and Mexico. Report the numeric values you find."
+    if args.manager_plot:
+        instruction = (
+            "Search Wikipedia for the population of California and Mexico. Report the numeric values you find, "
+            "and plot a bar chart comparing the populations."
+        )
+
     _run_manager_task(
         manager,
-        "Search Wikipedia for the population of California and Mexico. Report the numeric values you find.",
+        instruction,
     )
 
     california_pop, mexico_pop, california_trust, mexico_trust = _collect_population_data(search_agent, trust_csv)
-    _render_final_chart(california_pop, mexico_pop, california_trust, mexico_trust)
+    if args.manager_plot:
+        print("\nℹ️ Manager-driven plotting enabled; skipping fallback chart rendering.")
+    else:
+        _render_final_chart(california_pop, mexico_pop, california_trust, mexico_trust)
     display_trust_score_report(trust_csv)
 
 
