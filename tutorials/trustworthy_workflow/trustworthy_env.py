@@ -20,6 +20,7 @@ def environment_summary() -> Dict[str, str]:
     return {
         "LLM": os.environ.get("LLM", "Not set"),
         "CLEANLAB_TLM_API_KEY": "****" if os.environ.get("CLEANLAB_TLM_API_KEY") else "Not set",
+        "OPENROUTER_API_KEY": "****" if os.environ.get("OPENROUTER_API_KEY") else "Not set",
     }
 
 

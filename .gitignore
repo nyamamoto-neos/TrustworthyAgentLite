@@ -183,3 +183,4 @@ env.sh
 
 #credential
 credential.json
+/data
