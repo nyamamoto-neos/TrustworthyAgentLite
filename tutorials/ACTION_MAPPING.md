@@ -77,11 +77,11 @@ This document shows how tutorial actions now match the benchmark's `tool_operati
 ### Tutorial Structure
 ```
 tutorials/
-├── todo_actions/
+├── todo_tool-operation/
 │   ├── __init__.py          # Exports 10 action classes
 │   ├── todo_actions.py      # 10 action implementations
 │   └── todo_agent.py        # TodoManagerAgent with all actions
-└── sheet_actions/
+└── sheet_tool_operation/
     ├── __init__.py          # Exports 23 action classes
     ├── sheet_actions.py     # 23 action implementations
     └── sheet_agent.py       # SheetManagerAgent with all actions

@@ -70,22 +70,48 @@ class OpenRouterLLM(BaseLLM):
         # Get base URL from config or use default
         base_url = llm_config.base_url or os.environ.get("OPENROUTER_API_BASE", self.DEFAULT_BASE_URL)
 
+        # OpenRouter requires HTTP-Referer and X-Title headers; allow override via env vars
+        referer = os.environ.get(
+            "OPENROUTER_APP_URL",
+            "https://github.com/making-iot/AgentLiteTLM"
+        )
+        title = os.environ.get("OPENROUTER_APP_TITLE", "AgentLite")
+
+        # Provide both Referer header variants to satisfy stricter gateways
+        default_headers = {
+            "HTTP-Referer": referer,
+            "Referer": referer,
+            "X-Title": title,
+            "User-Agent": os.environ.get("OPENROUTER_USER_AGENT", "AgentLiteTLM/1.0"),
+            "Accept": "application/json",
+        }
+
         self.client = OpenAI(
             api_key=api_key,
-            base_url=base_url
+            base_url=base_url,
+            default_headers=default_headers
         )
 
     def run(self, prompt: str):
         """Execute the prompt and return the response."""
-        response = self.client.chat.completions.create(
-            model=self.llm_name,
-            messages=[
+        # Build request parameters - only include optional params if non-default
+        request_params = {
+            "model": self.llm_name,
+            "messages": [
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-        )
+        }
+
+        # Only add temperature if not default (0.0)
+        if self.temperature > 0:
+            request_params["temperature"] = self.temperature
+
+        # Only add max_tokens if not default (2048)
+        if self.max_tokens != 2048:
+            request_params["max_tokens"] = self.max_tokens
+
+        response = self.client.chat.completions.create(**request_params)
         return response.choices[0].message.content
 
 

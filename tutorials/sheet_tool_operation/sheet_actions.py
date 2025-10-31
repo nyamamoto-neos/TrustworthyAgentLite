@@ -41,23 +41,35 @@ class OpenSpreadsheet(BaseAction):
         action_name = "open_spreadsheet"
         action_desc = "Open a Google Spreadsheet by name or ID"
         params_doc = {
-            "name_or_id": "(Type: string) The name or ID of the spreadsheet to open"
+            "spreadsheet_name_or_id": "string: Name or ID of the spreadsheet to open",
+            "name_or_id": "string (optional alias): Deprecated name parameter, kept for backwards compatibility",
         }
         self.gc = gc
         super().__init__(action_name, action_desc, params_doc)
 
-    def __call__(self, name_or_id: str):
+    def __call__(self, spreadsheet_name_or_id: str = None, name_or_id: str = None):
         global current_spreadsheet
+
+        target_id = spreadsheet_name_or_id or name_or_id
+        if not target_id:
+            return "Error: Missing spreadsheet identifier. Provide 'spreadsheet_name_or_id'."
 
         if self.gc is None:
             return "Error: gspread client not initialized"
 
         try:
-            # Try opening by ID first, then by name
+            # Try opening by ID first
             try:
-                current_spreadsheet = self.gc.open_by_key(name_or_id)
-            except:
-                current_spreadsheet = self.gc.open(name_or_id)
+                current_spreadsheet = self.gc.open_by_key(target_id)
+            except Exception as e1:
+                # If opening by ID fails, try by name
+                try:
+                    current_spreadsheet = self.gc.open(target_id)
+                except Exception as e2:
+                    return (
+                        "Error opening spreadsheet: Could not find spreadsheet with name or ID "
+                        f"'{target_id}'. Errors: By ID: {str(e1)}, By name: {str(e2)}"
+                    )
 
             sheets = [ws.title for ws in current_spreadsheet.worksheets()]
             return f"Opened spreadsheet '{current_spreadsheet.title}'. Available sheets: {sheets}"
@@ -72,7 +84,7 @@ class OpenSheet(BaseAction):
         action_name = "open_sheet"
         action_desc = "Open a specific sheet (worksheet) within the current spreadsheet"
         params_doc = {
-            "sheet_name": "(Type: string) The name of the sheet to open"
+            "sheet_name": "string: Name of the worksheet to open"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -95,11 +107,11 @@ class GetAllValues(BaseAction):
 
     def __init__(self) -> None:
         action_name = "get_all_values"
-        action_desc = "Get all values from the current sheet as a 2D list"
-        params_doc = {}
+        action_desc = "Get all values from the current sheet as a 2D list. No parameters required."
+        params_doc = {"dummy": "string (optional): Not used - leave empty"}
         super().__init__(action_name, action_desc, params_doc)
 
-    def __call__(self):
+    def __call__(self, dummy: str = None):
         if not current_worksheet:
             return "Error: No sheet is currently open. Use open_sheet first."
 
@@ -119,7 +131,7 @@ class GetCellValue(BaseAction):
         action_name = "get_cell_value"
         action_desc = "Get the value of a specific cell"
         params_doc = {
-            "cell": "(Type: string) Cell address in A1 notation (e.g., 'A1', 'B5')"
+            "cell": "string: Cell address in A1 notation (e.g., 'A1', 'B2')"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -144,7 +156,7 @@ class GetRangeValues(BaseAction):
         action_name = "get_range_values"
         action_desc = "Get values from a cell range"
         params_doc = {
-            "range_notation": "(Type: string) Range in A1 notation (e.g., 'A1:C5')"
+            "range_name": "string: Range in A1 notation (e.g., 'A1:B10')"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -166,8 +178,8 @@ class UpdateCell(BaseAction):
         action_name = "update_cell"
         action_desc = "Update a single cell with a value"
         params_doc = {
-            "cell": "(Type: string) Cell address in A1 notation",
-            "value": "(Type: string) The value to set"
+            "cell": "string: Cell address in A1 notation (e.g., 'A1')",
+            "value": "string or number: Value to write to the cell"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -192,8 +204,8 @@ class UpdateRange(BaseAction):
         action_name = "update_range"
         action_desc = "Update a range of cells with values"
         params_doc = {
-            "range_notation": "(Type: string) Range in A1 notation (e.g., 'A1:C2')",
-            "values": "(Type: list) 2D list of values to set"
+            "range_name": "string: Range in A1 notation (e.g., 'A1:B2')",
+            "values": "list of lists: 2D array of values to write"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -215,8 +227,8 @@ class InsertRows(BaseAction):
         action_name = "insert_rows"
         action_desc = "Insert new rows with data"
         params_doc = {
-            "values": "(Type: list) 2D list of values to insert",
-            "row_index": "(Type: int) Row index to insert at (1-based)"
+            "values": "list of lists: Rows to insert, each row is a list of values",
+            "index": "integer (optional): Position to insert rows, default is end"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -238,7 +250,7 @@ class FindCell(BaseAction):
         action_name = "find_cell"
         action_desc = "Find a cell containing a specific value"
         params_doc = {
-            "query": "(Type: string) The value to search for"
+            "query": "string: Text to search for in the sheet"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -263,8 +275,7 @@ class SortSheetByColumn(BaseAction):
         action_name = "sort_sheet_by_column"
         action_desc = "Sort the entire sheet by a specific column"
         params_doc = {
-            "column_index": "(Type: int) Column index to sort by (1-based)",
-            "order": "(Type: string) Sort order: 'asc' or 'desc'"
+            "column_index": "integer: Column number to sort by (1-indexed)"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -287,11 +298,11 @@ class GetSheetSummary(BaseAction):
 
     def __init__(self) -> None:
         action_name = "get_sheet_summary"
-        action_desc = "Get a summary of the current sheet (dimensions, first few rows)"
-        params_doc = {}
+        action_desc = "Get a summary of the current sheet (dimensions, first few rows). No parameters required."
+        params_doc = {"dummy": "string (optional): Not used - leave empty"}
         super().__init__(action_name, action_desc, params_doc)
 
-    def __call__(self):
+    def __call__(self, dummy: str = None):
         if not current_worksheet:
             return "Error: No sheet is currently open."
 
@@ -322,7 +333,7 @@ class DeleteSheet(BaseAction):
         action_name = "del_sheet"
         action_desc = "Delete a sheet"
         params_doc = {
-            "name": "(Type: string) The name of the sheet to delete"
+            "name": "string: The name of the sheet to delete"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -346,8 +357,8 @@ class FreezeData(BaseAction):
         action_name = "freeze_data"
         action_desc = "Freeze data in a sheet"
         params_doc = {
-            "dimension": "(Type: string) The dimension to freeze data in (row or column)",
-            "num": "(Type: number) The number of rows or columns to freeze"
+            "dimension": "string: The dimension to freeze data in (row or column)",
+            "num": "integer: The number of rows or columns to freeze"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -375,8 +386,8 @@ class GetA1Annotation(BaseAction):
         action_name = "get_A1_annotation"
         action_desc = "Get the annotation at A1"
         params_doc = {
-            "row": "(Type: number) The row of the annotation",
-            "col": "(Type: number) The column of the annotation"
+            "row": "integer: The row of the annotation",
+            "col": "integer: The column of the annotation"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -397,8 +408,8 @@ class InsertColumns(BaseAction):
         action_name = "insert_cols"
         action_desc = "Insert columns into a sheet"
         params_doc = {
-            "values_list": "(Type: list) The list of values to insert",
-            "col_idx": "(Type: number) The index of the column to insert the values into"
+            "values_list": "list: The list of values to insert",
+            "col_idx": "integer: The index of the column to insert the values into"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -420,8 +431,8 @@ class DeleteBatchData(BaseAction):
         action_name = "delete_batch_data"
         action_desc = "Delete batch data from a sheet"
         params_doc = {
-            "dimension": "(Type: string) The dimension to delete data from (row or column)",
-            "index_list": "(Type: list) The list of indices to delete data from"
+            "dimension": "string: The dimension to delete data from (row or column)",
+            "index_list": "list: The list of indices to delete data from"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -452,11 +463,11 @@ class UpdateCellByFormula(BaseAction):
         action_name = "update_cell_by_formula"
         action_desc = "Update a cell by formula in a sheet"
         params_doc = {
-            "start_position": "(Type: string) The start position of the range to update",
-            "end_position": "(Type: string) The end position of the range to update",
-            "position_list": "(Type: list) The list of positions to update by formula",
-            "operator": "(Type: string) The operator to use in the formula",
-            "result_position": "(Type: string) The position to store the result of the formula"
+            "start_position": "string: The start position of the range to update",
+            "end_position": "string: The end position of the range to update",
+            "position_list": "list: The list of positions to update by formula",
+            "operator": "string: The operator to use in the formula",
+            "result_position": "string: The position to store the result of the formula"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -488,8 +499,8 @@ class SortSheetByCol(BaseAction):
         action_name = "sort_sheet_by_col"
         action_desc = "Sort a sheet by column"
         params_doc = {
-            "col_num": "(Type: number) The number of the column to sort by",
-            "order": "(Type: string) The order to sort by (ascending or descending)"
+            "col_num": "integer: The number of the column to sort by",
+            "order": "string: The order to sort by (ascending or descending)"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -515,8 +526,8 @@ class MergeCells(BaseAction):
         action_name = "merge_cells"
         action_desc = "Merge cells in a sheet"
         params_doc = {
-            "start_position": "(Type: string) The start position of the range to merge",
-            "end_position": "(Type: string) The end position of the range to merge"
+            "start_position": "string: The start position of the range to merge",
+            "end_position": "string: The end position of the range to merge"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -539,8 +550,8 @@ class UpdateNote(BaseAction):
         action_name = "update_note"
         action_desc = "Update a note in a sheet"
         params_doc = {
-            "position": "(Type: string) The position of the cell to update the note for",
-            "content": "(Type: string) The content of the note to update"
+            "position": "string: The position of the cell to update the note for",
+            "content": "string: The content of the note to update"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -562,10 +573,10 @@ class GetValueByFormula(BaseAction):
         action_name = "get_value_by_formula"
         action_desc = "Get the value of a cell by formula in a sheet"
         params_doc = {
-            "start_position": "(Type: string) The start position of the range to get values by formula",
-            "end_position": "(Type: string) The end position of the range to get values by formula",
-            "position_list": "(Type: list) The list of positions to get values by formula",
-            "operator": "(Type: string) The operator to use in the formula"
+            "start_position": "string: The start position of the range to get values by formula",
+            "end_position": "string: The end position of the range to get values by formula",
+            "position_list": "list: The list of positions to get values by formula",
+            "operator": "string: The operator to use in the formula"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -597,9 +608,9 @@ class FilterCells(BaseAction):
         action_name = "filter_cells"
         action_desc = "Filter cells in a sheet"
         params_doc = {
-            "query": "(Type: string) The query to filter cells by",
-            "in_row": "(Type: boolean) Whether to filter cells in the row",
-            "in_column": "(Type: boolean) Whether to filter cells in the column"
+            "query": "string: The query to filter cells by",
+            "in_row": "boolean: Whether to filter cells in the row",
+            "in_column": "boolean: Whether to filter cells in the column"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -630,7 +641,7 @@ class GetNote(BaseAction):
         action_name = "get_note"
         action_desc = "Get the note of a cell in a sheet"
         params_doc = {
-            "position": "(Type: string) The position of the cell to get the note for"
+            "position": "string: The position of the cell to get the note for"
         }
         super().__init__(action_name, action_desc, params_doc)
 

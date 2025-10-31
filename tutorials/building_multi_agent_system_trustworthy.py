@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 import os
-from typing import Tuple
+from typing import Dict, Tuple
+
+from dotenv import load_dotenv
 
 from agentlite.commons import TaskPackage
+from agentlite.llm.LLMConfig import LLMConfig
+from agentlite.llm.agent_llms import get_llm_backend
 
 from trustworthy_workflow.agent_factories import (
     build_agents,
-    build_llm,
     build_manager,
     create_loggers,
     seed_manager,
@@ -24,17 +27,36 @@ from trustworthy_workflow.trust_analysis import (
     load_trust_scores,
 )
 from trustworthy_workflow.action_drawFigure import DrawFigure
-from trustworthy_workflow.trustworthy_env import (
-    environment_summary,
-    ensure_data_directory,
-    prepare_environment,
-)
 
 
-def _print_environment_summary() -> None:
-    summary = environment_summary()
+def build_llm(llm_name: str) -> Tuple[object, LLMConfig]:
+    """Create the LLM backend defined by the environment."""
+    config_dict = {"llm_name": llm_name, "temperature": 0.0}
+    config = LLMConfig(config_dict)
+    llm = get_llm_backend(config)
+    return llm, config
+
+
+def _load_env() -> None:
+    """Load environment variables from .env file and print configuration summary."""
+    load_dotenv(override=True)
+    # Remove OpenAI API key to avoid conflicts with Cleanlab TLM
+    os.environ.pop("OPENAI_API_KEY", None)
+
+    # Print environment summary
+    summary = {
+        "LLM": os.environ.get("LLM", "Not set"),
+        "CLEANLAB_TLM_API_KEY": "****" if os.environ.get("CLEANLAB_TLM_API_KEY") else "Not set",
+        "OPENROUTER_API_KEY": "****" if os.environ.get("OPENROUTER_API_KEY") else "Not set",
+    }
     for key, value in summary.items():
         print(f"{key}: {value}")
+
+
+def _ensure_data_directory(path: str = "data") -> str:
+    """Ensure the CSV output directory exists and return its path."""
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def _run_manager_task(manager, instruction: str) -> str:
@@ -79,9 +101,8 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    prepare_environment()
-    _print_environment_summary()
-    data_dir = ensure_data_directory()
+    _load_env()
+    data_dir = _ensure_data_directory()
     trust_csv = os.path.join(data_dir, "trust_scores_demo.csv")
     agent_type = "react"  # available options: "react", "act", "zs" (alias for act), "zst" (alias for react)
 
