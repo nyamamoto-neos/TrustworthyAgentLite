@@ -1,0 +1,27 @@
+{
+  "description": "Cleanlab TLM pricing configuration for different quality presets",
+  "pricing": {
+    "base": {
+      "input_per_1m_tokens": 0.50,
+      "output_per_1m_tokens": 1.70,
+      "description": "Fastest responses, suitable for simple tasks"
+    },
+    "medium": {
+      "input_per_1m_tokens": 1.50,
+      "output_per_1m_tokens": 5.00,
+      "description": "Balanced performance and quality"
+    },
+    "high": {
+      "input_per_1m_tokens": 3.00,
+      "output_per_1m_tokens": 10.00,
+      "description": "High quality for complex tasks"
+    },
+    "best": {
+      "input_per_1m_tokens": 5.00,
+      "output_per_1m_tokens": 17.00,
+      "description": "Maximum quality and accuracy"
+    }
+  },
+  "default_quality": "base",
+  "note": "Prices are in USD. Check https://tlm.cleanlab.ai/account for the latest pricing information."
+}

@@ -123,12 +123,12 @@ def create_agent(llm, gspread_client):
 
 
 def test_open_spreadsheet(agent, spreadsheet_name="Test Sheet"):
-    """Test 1: Open a spreadsheet and get summary."""
+    """Test 1: Open a spreadsheet and get summary of Sheet1."""
     print("=" * 60)
-    print("TEST 1: Open spreadsheet and get summary")
+    print("TEST 1: Open spreadsheet and get Sheet1 summary")
     print("=" * 60)
 
-    task = f"Open the spreadsheet named '{spreadsheet_name}' and give me a summary of Sheet1"
+    task = f"Open the spreadsheet '{spreadsheet_name}' and switch to 'Sheet1'. Give me a summary of the sheet content."
     task_pack = TaskPackage(instruction=task)
     response = agent(task_pack)
 
@@ -136,13 +136,13 @@ def test_open_spreadsheet(agent, spreadsheet_name="Test Sheet"):
     return response
 
 
-def test_read_cell(agent):
-    """Test 2: Read specific cell values."""
+def test_read_product_data(agent):
+    """Test 2: Read product inventory data from Sheet1."""
     print("=" * 60)
-    print("TEST 2: Read cell values")
+    print("TEST 2: Read product inventory from Sheet1")
     print("=" * 60)
 
-    task = "What is the value in cell B1 of the current sheet?"
+    task = "In Sheet1, read all the product data. What products are available and what are their quantities?"
     task_pack = TaskPackage(instruction=task)
     response = agent(task_pack)
 
@@ -150,13 +150,31 @@ def test_read_cell(agent):
     return response
 
 
-def test_update_cell(agent):
-    """Test 3: Update a cell."""
+def test_find_specific_product(agent):
+    """Test 3: Find a specific product in Sheet1."""
     print("=" * 60)
-    print("TEST 3: Update a cell value")
+    print("TEST 3: Find 'banana' product in Sheet1")
     print("=" * 60)
 
-    task = "Update cell B2 to contain the text 'Updated by Agent'"
+    task = "In Sheet1, find the cell that contains 'banana' and tell me its current quantity."
+    task_pack = TaskPackage(instruction=task)
+    response = agent(task_pack)
+
+    print(f"\n� Response: {response}\n")
+    return response
+
+
+def test_update_inventory(agent):
+    """Test 4: Update product inventory based on sales data."""
+    print("=" * 60)
+    print("TEST 4: Update Sheet1 inventory with today's sales")
+    print("=" * 60)
+
+    task = """In Sheet1, update the product inventory by subtracting today's sales from current quantities.
+Today's sales data: [['Product', 'Today Sold'], ['beef', '5'], ['pork', '2'], ['chicken', '8'],
+['lamb', '12'], ['duck', '3'], ['fish', '23'], ['shrimp', '21'], ['salmon', '12'],
+['apple', '100'], ['banana', '287'], ['orange', '234'], ['carrot', '12']].
+After updating, tell me which products have the lowest inventory."""
     task_pack = TaskPackage(instruction=task)
     response = agent(task_pack)
 
@@ -164,29 +182,31 @@ def test_update_cell(agent):
     return response
 
 
-def test_find_cell(agent):
-    """Test 4: Find a value."""
+def test_sort_by_quantity(agent):
+    """Test 5: Sort Sheet1 by Quantity column."""
     print("=" * 60)
-    print("TEST 4: Find a cell containing specific text")
+    print("TEST 5: Sort Sheet1 by Quantity (descending)")
     print("=" * 60)
 
-    task = "Find the cell that contains 'Total' and tell me its location"
+    task = "In Sheet1, sort the data by the 'Quantity' column in descending order."
     task_pack = TaskPackage(instruction=task)
     response = agent(task_pack)
 
-    print(f"\n🔍 Response: {response}\n")
+    print(f"\n� Response: {response}\n")
     return response
 
 
 def test_complex_workflow(agent):
-    """Test 5: Complex workflow - Data Analysis."""
+    """Test 6: Complete workflow - Update inventory and sort."""
     print("=" * 60)
-    print("COMPLEX WORKFLOW: Analyze and update data")
+    print("COMPLEX WORKFLOW: Update inventory with sales and sort")
     print("=" * 60)
 
-    task = """In the current sheet, find all cells in column A that contain 'Product',
-then read the values in column B next to them, and give me a summary."""
-
+    task = """Product Update: The table in "Sheet1" contains the product inventory information,
+and [['Product', 'Today Sold'], ['beef', '5'], ['pork', '2'], ['chicken', '8'],
+['lamb', '12'], ['duck', '3'], ['fish', '23'], ['shrimp', '21'], ['salmon', '12'],
+['apple', '100'], ['banana', '287'], ['orange', '234'], ['carrot', '12']] is today's sales data.
+Please update the product information in "Sheet1" in time and then sort by "Quantity" in descending order."""
     task_pack = TaskPackage(instruction=task)
     response = agent(task_pack)
 
@@ -219,11 +239,13 @@ def main():
         # https://docs.google.com/spreadsheets/d/1h-F1tMEYXKpm5efWuh0HduXGHsiz9W1alJcMEODvPIY/edit
         spreadsheet_id = "1h-F1tMEYXKpm5efWuh0HduXGHsiz9W1alJcMEODvPIY"
 
+        # Run progressive tests on Sheet1 product inventory
         test_open_spreadsheet(agent, spreadsheet_id)
-        test_read_cell(agent)
-        # test_update_cell(agent)
-        # test_find_cell(agent)
-        # test_complex_workflow(agent)
+        test_read_product_data(agent)
+        test_find_specific_product(agent)
+        # test_update_inventory(agent)  # Uncomment to update inventory
+        # test_sort_by_quantity(agent)  # Uncomment to sort
+        # test_complex_workflow(agent)  # Uncomment for full workflow
 
         print("\n" + "=" * 60)
         print("✅ All tests completed successfully!")

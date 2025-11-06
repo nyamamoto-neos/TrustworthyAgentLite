@@ -111,8 +111,23 @@ class TrustworthyAgentLogger(AgentLogger):
             color = bcolors.FAIL     # Low trust - red
         return f"{color}{score:.2f}{bcolors.ENDC}"
 
+    def info(self, message: str):
+        """Log informational messages."""
+        log_str = f"{bcolors.OKBLUE}[INFO]{bcolors.ENDC} {message}"
+        self.__save_log__(log_str)
+
+    def warning(self, message: str):
+        """Log warning messages."""
+        log_str = f"{bcolors.WARNING}[WARNING]{bcolors.ENDC} {message}"
+        self.__save_log__(log_str)
+
+    def error(self, message: str):
+        """Log error messages."""
+        log_str = f"{bcolors.FAIL}[ERROR]{bcolors.ENDC} {message}"
+        self.__save_log__(log_str)
+
     def log_action_trust(self, action: AgentAct, trust_score: float, agent_name: str, step_idx: int):
-        """Log an action's trustworthiness score."""        
+        """Log an action's trustworthiness score."""
         # Log the trust score on its own line
         trust_str = f"""Trustworthiness score: {self.__color_trust_score__(trust_score)}"""
         self.__save_log__(trust_str)

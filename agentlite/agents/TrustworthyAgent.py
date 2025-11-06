@@ -1,5 +1,7 @@
 from typing import List, Dict, Any
 import csv
+import json
+import os
 from agentlite.utils import f1_score
 from datetime import datetime
 from dotenv import load_dotenv
@@ -36,6 +38,7 @@ class TrustworthyAgent(BaseAgent):
         trust_score_file: str = None,
         score_last_only: bool = False,
         skip_trust_actions: List[str] = None,
+        tlm_quality: str = "base",
         **kwargs
     ):
         # ---------------- Logger Setup (Optional) ----------------
@@ -54,7 +57,7 @@ class TrustworthyAgent(BaseAgent):
 
         # ---------------- BaseAgent ----------------
         super().__init__(name=name, role=role, llm=llm, actions=actions, **kwargs)
-        self.max_exec_steps = 10 # Set max steps for agent following BOLAA
+        self.max_exec_steps = 20 # Set max steps for agent (increased from 10 to allow completing complex tasks)
         # ---------------------------------------------------
 
         self.score_last_only = score_last_only         # Optional: Whether to score only final Finish act
@@ -66,6 +69,36 @@ class TrustworthyAgent(BaseAgent):
 
         # ---------------- Minimal TLM Setup ----------------
         self.tlm = TLM()
+        # ---------------------------------------------------
+
+        # ---------------- Load TLM Pricing Configuration ----------------
+        config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'tlm_pricing.json')
+        try:
+            with open(config_path, 'r') as f:
+                self.pricing_config = json.load(f)
+        except FileNotFoundError:
+            self.logger.warning(f"TLM pricing config not found at {config_path}, using default base pricing")
+            self.pricing_config = {
+                "pricing": {
+                    "base": {"input_per_1m_tokens": 0.50, "output_per_1m_tokens": 1.70}
+                },
+                "default_quality": "base"
+            }
+
+        self.tlm_quality = tlm_quality
+        if tlm_quality not in self.pricing_config.get("pricing", {}):
+            self.logger.warning(f"Unknown TLM quality preset '{tlm_quality}', falling back to 'base'")
+            self.tlm_quality = self.pricing_config.get("default_quality", "base")
+
+        self.pricing_info = self.pricing_config["pricing"][self.tlm_quality]
+        self.logger.info(f"Using TLM quality preset: {self.tlm_quality} "
+                        f"(Input: ${self.pricing_info['input_per_1m_tokens']}/1M, "
+                        f"Output: ${self.pricing_info['output_per_1m_tokens']}/1M)")
+
+        # Initialize token tracking
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.total_cost = 0.0
         # ---------------------------------------------------
 
         # ---------------- Save to CSV (Optional) ----------------
@@ -86,7 +119,10 @@ class TrustworthyAgent(BaseAgent):
                     'trust_score',
                     'f1',
                     'action_name',
-                    'action_params'
+                    'action_params',
+                    'input_tokens',
+                    'output_tokens',
+                    'cost_usd'
                 ])
         except FileExistsError:
             pass  # File already exists
@@ -118,6 +154,10 @@ class TrustworthyAgent(BaseAgent):
 
         # ---------------- Minimal TLM Setup ----------------
         trust_score = None
+        input_tokens = 0
+        output_tokens = 0
+        cost = 0.0
+
         # Skip TLM scoring for specified local actions (e.g., DrawFigure).
         # Be tolerant: skip when the action name contains the skip token (covers cases
         # where parsing failed and agent_act.name equals the full raw_action string),
@@ -140,7 +180,38 @@ class TrustworthyAgent(BaseAgent):
             trust_score = None
         else:
             if not self.score_last_only or agent_act.name == FinishAct.action_name:
-                trust_score = self.tlm.get_trustworthiness_score(action_prompt, raw_action)["trustworthiness_score"]
+                # Get trustworthiness score and token usage from TLM
+                tlm_response = self.tlm.get_trustworthiness_score(action_prompt, raw_action)
+                trust_score = tlm_response["trustworthiness_score"]
+
+                # Estimate token counts (TLM may provide these in the response)
+                # If not provided by API, estimate: ~4 chars per token
+                if "input_tokens" in tlm_response:
+                    input_tokens = tlm_response["input_tokens"]
+                else:
+                    input_tokens = len(action_prompt) // 4
+
+                if "output_tokens" in tlm_response:
+                    output_tokens = tlm_response["output_tokens"]
+                else:
+                    output_tokens = len(str(raw_action)) // 4
+
+                # Calculate cost
+                cost = (
+                    (input_tokens / 1_000_000) * self.pricing_info['input_per_1m_tokens'] +
+                    (output_tokens / 1_000_000) * self.pricing_info['output_per_1m_tokens']
+                )
+
+                # Update cumulative tracking
+                self.total_input_tokens += input_tokens
+                self.total_output_tokens += output_tokens
+                self.total_cost += cost
+
+                # Log token usage
+                self.logger.info(
+                    f"TLM Token Usage - Input: {input_tokens:,}, Output: {output_tokens:,}, "
+                    f"Cost: ${cost:.6f} (Total: ${self.total_cost:.6f})"
+                )
         # ---------------------------------------------------
 
         # ---------------- Get F1 score & Response (Optional) ----------------
@@ -170,7 +241,10 @@ class TrustworthyAgent(BaseAgent):
                 trust_score=trust_score,
                 f1=f1,
                 action_name=agent_act.name,
-                action_params=agent_act.params
+                action_params=agent_act.params,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost
             )
         # ---------------------------------------------------
         return agent_act
@@ -196,7 +270,25 @@ class TrustworthyAgent(BaseAgent):
                     kwargs.get('trust_score', None),
                     kwargs.get('f1', None),
                     kwargs.get('action_name', ''),
-                    str(kwargs.get('action_params', {}))
+                    str(kwargs.get('action_params', {})),
+                    kwargs.get('input_tokens', 0),
+                    kwargs.get('output_tokens', 0),
+                    kwargs.get('cost_usd', 0.0)
                 ])
         except Exception as e:
             self.logger.error(f"Failed to record trust score: {str(e)}")
+
+    def get_token_usage_summary(self) -> Dict[str, Any]:
+        """Get summary of token usage and costs for this agent.
+
+        Returns:
+            Dict containing total input/output tokens and cost
+        """
+        return {
+            "total_input_tokens": self.total_input_tokens,
+            "total_output_tokens": self.total_output_tokens,
+            "total_tokens": self.total_input_tokens + self.total_output_tokens,
+            "total_cost_usd": self.total_cost,
+            "quality_preset": self.tlm_quality,
+            "pricing": self.pricing_info
+        }

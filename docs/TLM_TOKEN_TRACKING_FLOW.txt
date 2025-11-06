@@ -1,0 +1,160 @@
+# Token Tracking Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        TrustworthyAgent                              │
+│                                                                       │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │  __init__()                                                     │ │
+│  │  ┌────────────────────────────────────────────────────────┐   │ │
+│  │  │ 1. Load tlm_pricing.json                               │   │ │
+│  │  │    ├─ base: $0.50/$1.70 per 1M tokens                 │   │ │
+│  │  │    ├─ medium: $1.50/$5.00 per 1M tokens               │   │ │
+│  │  │    ├─ high: $3.00/$10.00 per 1M tokens                │   │ │
+│  │  │    └─ best: $5.00/$17.00 per 1M tokens                │   │ │
+│  │  │                                                            │   │ │
+│  │  │ 2. Initialize tracking variables                          │   │ │
+│  │  │    ├─ total_input_tokens = 0                             │   │ │
+│  │  │    ├─ total_output_tokens = 0                            │   │ │
+│  │  │    └─ total_cost = 0.0                                   │   │ │
+│  │  │                                                            │   │ │
+│  │  │ 3. Create CSV with new columns                            │   │ │
+│  │  │    └─ [..., input_tokens, output_tokens, cost_usd]       │   │ │
+│  │  └────────────────────────────────────────────────────────┘   │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+│                                                                       │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │  __next_act__(task, action_chain)                             │ │
+│  │  ┌────────────────────────────────────────────────────────┐   │ │
+│  │  │ 1. Generate action prompt                                │   │ │
+│  │  │    └─ prompt = self.prompt_gen.action_prompt(...)        │   │ │
+│  │  │                                                            │   │ │
+│  │  │ 2. Get LLM response                                       │   │ │
+│  │  │    └─ raw_action = self.llm_layer(prompt)                │   │ │
+│  │  │                                                            │   │ │
+│  │  │ 3. Call TLM API (if not skipped)                          │   │ │
+│  │  │    ┌──────────────────────────────────────┐              │   │ │
+│  │  │    │ tlm_response = self.tlm.             │              │   │ │
+│  │  │    │   get_trustworthiness_score(         │              │   │ │
+│  │  │    │     prompt, raw_action)              │              │   │ │
+│  │  │    └──────────────────────────────────────┘              │   │ │
+│  │  │          │                                                 │   │ │
+│  │  │          ├─ trust_score                                   │   │ │
+│  │  │          ├─ input_tokens (or estimate)                   │   │ │
+│  │  │          └─ output_tokens (or estimate)                  │   │ │
+│  │  │                                                            │   │ │
+│  │  │ 4. Calculate cost                                         │   │ │
+│  │  │    ┌────────────────────────────────────────────────┐    │   │ │
+│  │  │    │ cost = (input_tokens / 1M) * input_price +     │    │   │ │
+│  │  │    │        (output_tokens / 1M) * output_price     │    │   │ │
+│  │  │    └────────────────────────────────────────────────┘    │   │ │
+│  │  │                                                            │   │ │
+│  │  │ 5. Update cumulative totals                               │   │ │
+│  │  │    ├─ total_input_tokens += input_tokens                 │   │ │
+│  │  │    ├─ total_output_tokens += output_tokens               │   │ │
+│  │  │    └─ total_cost += cost                                 │   │ │
+│  │  │                                                            │   │ │
+│  │  │ 6. Log to console                                         │   │ │
+│  │  │    └─ "TLM Token Usage - Input: X, Output: Y, Cost: $Z"  │   │ │
+│  │  │                                                            │   │ │
+│  │  │ 7. Save to CSV                                            │   │ │
+│  │  │    └─ __record_interaction__(                             │   │ │
+│  │  │         ..., input_tokens, output_tokens, cost_usd)       │   │ │
+│  │  └────────────────────────────────────────────────────────┘   │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+│                                                                       │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │  get_token_usage_summary()                                     │ │
+│  │  ┌────────────────────────────────────────────────────────┐   │ │
+│  │  │ Returns:                                                  │   │ │
+│  │  │  {                                                        │   │ │
+│  │  │    "total_input_tokens": X,                              │   │ │
+│  │  │    "total_output_tokens": Y,                             │   │ │
+│  │  │    "total_tokens": X+Y,                                  │   │ │
+│  │  │    "total_cost_usd": $Z,                                 │   │ │
+│  │  │    "quality_preset": "base",                             │   │ │
+│  │  │    "pricing": {...}                                      │   │ │
+│  │  │  }                                                        │   │ │
+│  │  └────────────────────────────────────────────────────────┘   │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+
+                              ↓ OUTPUTS ↓
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Console Logs                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│ [INFO] Using TLM quality preset: base (Input: $0.5/1M, ...)        │
+│ [INFO] TLM Token Usage - Input: 856, Output: 124, Cost: $0.000639  │
+│ [INFO] TLM Token Usage - Input: 1,203, Output: 289, Cost: $0.0011  │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                         CSV File                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│ task_id, step, prompt, raw_action, trust_score, ..., input_tokens,  │
+│                                            output_tokens, cost_usd   │
+├─────────────────────────────────────────────────────────────────────┤
+│ t001, 1, "...", "...", 0.95, ..., 856, 124, 0.000639               │
+│ t001, 2, "...", "...", 0.87, ..., 1203, 289, 0.001093              │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                     API Response (Summary)                           │
+├─────────────────────────────────────────────────────────────────────┤
+│ {                                                                    │
+│   "total_input_tokens": 2059,                                       │
+│   "total_output_tokens": 413,                                       │
+│   "total_tokens": 2472,                                             │
+│   "total_cost_usd": 0.001732,                                       │
+│   "quality_preset": "base",                                         │
+│   "pricing": {                                                       │
+│     "input_per_1m_tokens": 0.5,                                     │
+│     "output_per_1m_tokens": 1.7                                     │
+│   }                                                                  │
+│ }                                                                    │
+└─────────────────────────────────────────────────────────────────────┘
+
+
+TOKEN ESTIMATION LOGIC:
+═══════════════════════
+
+┌─────────────────────────────────────────┐
+│ TLM API Response Contains Token Counts? │
+└────────────────┬────────────────────────┘
+                 │
+        ┌────────┴────────┐
+        │                 │
+       YES               NO
+        │                 │
+        ▼                 ▼
+   ┌─────────┐      ┌──────────────┐
+   │ Use API │      │ Estimate:    │
+   │ counts  │      │ tokens ≈     │
+   │ exactly │      │ chars / 4    │
+   └─────────┘      └──────────────┘
+
+
+COST CALCULATION:
+═════════════════
+
+Input Cost  = (input_tokens / 1,000,000) × input_price_per_1M
+Output Cost = (output_tokens / 1,000,000) × output_price_per_1M
+Total Cost  = Input Cost + Output Cost
+
+Example (base quality):
+  Input:  1000 tokens → (1000/1M) × $0.50 = $0.0005
+  Output:  200 tokens → (200/1M) × $1.70 = $0.00034
+  Total:                                   = $0.00084
+
+
+QUALITY PRESET COMPARISON:
+═══════════════════════════
+
+Same request (1000 input + 200 output tokens):
+
+base:   $0.00084  ████
+medium: $0.00249  ████████████  (3x more)
+high:   $0.00500  ████████████████████████  (6x more)
+best:   $0.00840  ████████████████████████████████████████  (10x more)
+```

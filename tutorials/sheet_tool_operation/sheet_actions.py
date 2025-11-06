@@ -156,7 +156,7 @@ class GetRangeValues(BaseAction):
         action_name = "get_range_values"
         action_desc = "Get values from a cell range"
         params_doc = {
-            "range_name": "string: Range in A1 notation (e.g., 'A1:B10')"
+            "range_notation": "string: Range in A1 notation (e.g., 'A1:B10')"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -204,7 +204,7 @@ class UpdateRange(BaseAction):
         action_name = "update_range"
         action_desc = "Update a range of cells with values"
         params_doc = {
-            "range_name": "string: Range in A1 notation (e.g., 'A1:B2')",
+            "range_notation": "string: Range in A1 notation (e.g., 'A1:B2')",
             "values": "list of lists: 2D array of values to write"
         }
         super().__init__(action_name, action_desc, params_doc)
@@ -228,7 +228,7 @@ class InsertRows(BaseAction):
         action_desc = "Insert new rows with data"
         params_doc = {
             "values": "list of lists: Rows to insert, each row is a list of values",
-            "index": "integer (optional): Position to insert rows, default is end"
+            "row_index": "integer: Position to insert rows (1-indexed)"
         }
         super().__init__(action_name, action_desc, params_doc)
 
@@ -275,7 +275,8 @@ class SortSheetByColumn(BaseAction):
         action_name = "sort_sheet_by_column"
         action_desc = "Sort the entire sheet by a specific column"
         params_doc = {
-            "column_index": "integer: Column number to sort by (1-indexed)"
+            "column_index": "integer: Column number to sort by (1-indexed)",
+            "order": "string (optional): Sort order 'asc' or 'desc', default is 'asc'"
         }
         super().__init__(action_name, action_desc, params_doc)
 
